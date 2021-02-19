@@ -3,6 +3,7 @@
   "description": "Learning the JSS library",
   "version": "0.1.0",
   "main": "index.html",
+  "source": true,
   "repository": "git@github.com:wnrosenberg/jzz-demo.git",
   "author": "Will Rosenberg <will.rosenberg@gmail.com>",
   "license": "MIT",
@@ -11,5 +12,14 @@
   },
   "dependencies": {
     "jzz": "^1.2.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.12.17",
+    "@babel/preset-env": "^7.12.17"
+  },
+  "babel": {
+    "presets": [
+      "@babel/preset-env"
+    ]
   }
 }

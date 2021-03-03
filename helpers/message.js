@@ -1,24 +1,40 @@
 import JZZ from 'jzz';
 
-const MSG_CLOCK = [0xf8];
+// Library for handling MIDI messages.
 
-// Sysex: HEADER + TYPE + DATA + TAIL
-const CMD_HEADER = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x10];
-const CMD_TAIL = [0xf7];
-export const TYPE_PAD_COLOR = [0x0a];
-export const TYPE_COL_COLOR = [0x0c];
-export const TYPE_ROW_COLOR = [0x0d];
-export const TYPE_GRID_COLOR = [0x0e];
-export const TYPE_PAD_FLASH = [0x23];
-export const TYPE_PAD_PULSE = [0x28];
-export const TYPE_PAD_RGB = [0x08];
-export const TYPE_GRID_RGB = [0x0f];
-export const TYPE_SCROLL = [0x14];
-export const TYPE_SCROLL_END = [0x15];
+// MIDI Messages
+const MSG_CLOCK = [0xf8];
 // const MSG_DEVICE_INQ = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
 // const MSG_VERSION_INQ = [0xF0, 0x00, 0x20, 0x29, 0x00, 0x70, 0xf7];
+const MSG_SCROLL_END = [...CMD_HEADER, ...TYPE_SCROLL_END, ...CMD_TAIL];
 
-// Return a MIDI message of type with data.
+// Sysex Commands: HEADER + TYPE + DATA + TAIL
+const CMD_HEADER = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x10];
+const CMD_TAIL = [0xf7];
+
+// Sysex Types: Change color of pads.
+export const TYPE_PAD_COLOR = [0x0a]; // pad(color)
+export const TYPE_COL_COLOR = [0x0c]; // col(color)
+export const TYPE_ROW_COLOR = [0x0d]; // row(color)
+export const TYPE_GRID_COLOR = [0x0e]; // grid(color)
+export const TYPE_PAD_FLASH = [0x23]; // flashpad(color)
+export const TYPE_PAD_PULSE = [0x28]; // pulsepad(color)
+export const TYPE_PAD_RGB = [0x08]; // pad(rgb)
+export const TYPE_GRID_RGB = [0x0f]; // grid(type, rgb) // type: 0=10x10, 1=8x8
+
+// Sysex Types: Built-in scrolling text.
+export const TYPE_SCROLL = [0x14]; // scroll(color, loop, text) // loop: bool
+export const TYPE_SCROLL_END = [0x15]; // response on scroll iteration
+
+// Sysex Types: Set Current Layout
+export const TYPE_LAYOUT_SET = [0x2c]; // 00=note,01=drum,02=fader,03=programmer
+export const TYPE_LAYOUT_STATUS = [0x2f]; // response to SET
+
+// Sysex Types: Get / Set Current Layout
+export const TYPE_MODE_SET = [0x21]; // 00=ableton, 01=standalone
+export const TYPE_MODE_STATUS = [0x2d]; // response to SET
+
+
 // @TODO data validation
 export const getMsg = (type, data=[]) => {
 	// velocity-based color range 0 (off), 1 - 127 / [0x00 - 0x7f]
@@ -91,6 +107,26 @@ export const getMsg = (type, data=[]) => {
 		// to stop scrolling, send dataless SCROLL cmd.
 		return JZZ.MIDI([ ...CMD_HEADER, ...type, ...data.flat(), ...CMD_TAIL ]);
 
+	} else if (type === TYPE_LAYOUT_STATUS) {
+
+		// request the layout status (no data passed)
+		return JZZ.MIDI([ ...CMD_HEADER, ...type, ...CMD_TAIL ]);
+
+	} else if (type === TYPE_LAYOUT_SET) {
+
+		// update the layout to the specified data
+		return JZZ.MIDI([ ...CMD_HEADER, ...type, data, ...CMD_TAIL ]);
+
+	} else if (type === TYPE_MODE_STATUS) {
+
+		// request the mode status (no data passed)
+		return JZZ.MIDI([ ...CMD_HEADER, ...type, ...CMD_TAIL ]);
+
+	} else if (type === TYPE_MODE_SET) {
+
+		// update the mode to the specified data
+		return JZZ.MIDI([ ...CMD_HEADER, ...type, data, ...CMD_TAIL ]);
+
 	} else {
 
 		// UNKNOWN OR UNSUPPORTED METHOD
@@ -98,15 +134,26 @@ export const getMsg = (type, data=[]) => {
 	}
 };
 
-export const sendMsg = (port, msg, options=[]) => {
-	if (!options.cb || typeof options.cb !== 'function') options.cb = ()=>{};
-	if (!options.errcb || typeof options.errcb !== 'function') options.errcb = err=>console.error(err);
-	if (options.delay > 0) {
-		port.wait(options.delay)
-		    .send(msg).then(options.cb, options.errcb);
-	} else {
-		port.send(msg).then(options.cb, options.errcb);
-	}
 
-	
-};
+// Use port.send() with native jzz code.
+
+// export const sendMsg = (port, msg, options=[]) => {
+// 	if (!options.cb || typeof options.cb !== 'function') options.cb = ()=>{};
+// 	if (!options.errcb || typeof options.errcb !== 'function') options.errcb = err=>console.error(err);
+// 	if (options.delay > 0) {
+// 		port.wait(options.delay)
+// 		    .send(msg).then(options.cb, options.errcb);
+// 	} else {
+// 		port.send(msg).then(options.cb, options.errcb);
+// 	}
+// };
+
+// const setDeviceLayout = (input, output, mode) => {
+// 	// Send the message on output and confirm response on input.
+// 	input.connect(function(){
+// 		// listen for response	
+// 	})
+// 	output.send(getMsg(TYPE_LAYOUT_SET, mode));
+// 	 = [0x2c]; // 00=note,01=drum,02=fader,03=programmer	
+// 	TYPE_LAYOUT_STATUS = [0x2f]; // response to SET
+// }

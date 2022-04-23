@@ -22,6 +22,16 @@ class LaunchPad {
 	// Instance fields
 	input; // the input port
 	output; // the output port
+	gridState = [[0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0],
+	             [0,0,0,0,0,0,0,0,0,0]];
 
 	/**
 	 * LaunchPad() - instantiate a new LaunchPad object.
@@ -52,6 +62,30 @@ class LaunchPad {
 			// default to programmer layout.
 			this.output.send(getMsg(TYPE_LAYOUT_SET, 3));
 		}
+
+		// Set initial grid state, 1-127 = olor, 0 = off
+		if (options.gridState) {
+			this.recallGridState(options.gridState);
+		} // else use all 0s
+	}
+
+	// Convert a 10x10 grid state into an array for sendPadChange and send it.
+	recallGridState(gridState) {
+		const newGrid = [];
+		// Check that the dimensions are correct (10x10)
+		if (gridState.length === 10 && gridState[0].length === 10) {
+			gridState.forEach((row, rowIndex) => {
+				row.forEach((col, colIndex) => {
+					const index = (9 - rowIndex) * 10 + colIndex;
+					if ([0, 9, 90].indexOf(index) === -1) {
+						newGrid.push([index, col]);
+					}
+				});
+			});
+		}
+		if (newGrid.length) {
+			this.sendPadChange(newGrid);
+		}	
 	}
 
 	//
@@ -167,6 +201,9 @@ class LaunchPad {
 		if (offAtEnd && colors.length && colors[colors.length - 1] !== 0) {
 			colors[colors.length] = 0;
 		}
+		if (typeof note === 'string') {
+			note = JZZ.MIDI.midi(note);
+		}
 		colors.forEach((color, i) => {
 			const d = delay * i;
 			if (!color) {
@@ -176,6 +213,73 @@ class LaunchPad {
 			}
 		})
 	}
+
+	// Send msgs to cycle a pad through colors (via SysEx)
+	sendColorCycleSysEx(note, colors = [], delay = 1000, offAtEnd = true) {
+		if (offAtEnd && colors.length && colors[colors.length - 1] !== 0) {
+			colors[colors.length] = 0;
+		}
+		colors.forEach((color, i) => {
+			const d = delay * i;
+			this.output.wait(d).send(this.getPadChange([note, color]));
+		})
+	}
+
+	/**
+	 * [ ------ ]  [   91   ]  [   92   ]  [   93   ]  [   94   ]  [   95   ]  [   96   ]  [   97   ]  [   98   ]  [ ------ ]
+	 * [ ------ ]  [   up   ]  [   dn   ]  [   lf   ]  [   rt   ]  [ Session]  [  Note  ]  [ Device ]  [  User  ]  [ ------ ]
+	 * [  F#7   ]  [   G7   ]  [  G#7   ]  [   A7   ]  [  A#7   ]  [   B7   ]  [   C8   ]  [  C#8   ]  [   D8   ]  [  D#8   ]
+	 *
+	 * 
+	 * [   80   ]  [   81   ]  [   82   ]  [   83   ]  [   84   ]  [   85   ]  [   86   ]  [   87   ]  [   88   ]  [   89   ]
+	 * [  Shift ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [  G#6   ]  [   A6   ]  [  A#6   ]  [   B6   ]  [   C7   ]  [  C#7   ]  [   D7   ]  [  D#7   ]  [   E7   ]  [   F7   ]
+	 *
+	 * 
+	 * [   70   ]  [   71   ]  [   72   ]  [   73   ]  [   74   ]  [   75   ]  [   76   ]  [   77   ]  [   78   ]  [   79   ]
+	 * [  Click ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [  A#5   ]  [   B5   ]  [   C6   ]  [  C#6   ]  [   D6   ]  [  D#6   ]  [   E6   ]  [   F6   ]  [  F#6   ]  [   G6   ]
+	 *
+	 * 
+	 * [   60   ]  [   61   ]  [   62   ]  [   63   ]  [   64   ]  [   65   ]  [   66   ]  [   67   ]  [   68   ]  [   69   ]
+	 * [  Undo  ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [   C5   ]  [  C#5   ]  [   D5   ]  [  D#5   ]  [   E5   ]  [   F5   ]  [  F#5   ]  [   G5   ]  [  G#5   ]  [   A5   ]
+	 *
+	 * 
+	 * [   50   ]  [   51   ]  [   52   ]  [   53   ]  [   54   ]  [   55   ]  [   56   ]  [   57   ]  [   58   ]  [   59   ]
+	 * [ Delete ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [   D4   ]  [  D#4   ]  [   E4   ]  [   F4   ]  [  F#4   ]  [   G4   ]  [  G#4   ]  [   A4   ]  [  A#4   ]  [   B4   ]
+	 *
+	 * 
+	 * [   40   ]  [   41   ]  [   42   ]  [   43   ]  [   44   ]  [   45   ]  [   46   ]  [   47   ]  [   48   ]  [   49   ]
+	 * [ Quantze]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [   E3   ]  [   F3   ]  [  F#3   ]  [   G3   ]  [  G#3   ]  [   A3   ]  [  A#3   ]  [   B3   ]  [   C4   ]  [  C#4   ]
+	 *
+	 * 
+	 * [   30   ]  [   31   ]  [   32   ]  [   33   ]  [   34   ]  [   35   ]  [   36   ]  [   37   ]  [   38   ]  [   39   ]
+	 * [ Duplic8]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [  F#2   ]  [   G2   ]  [  G#2   ]  [   A2   ]  [  A#2   ]  [   B2   ]  [   C3   ]  [  C#3   ]  [   D3   ]  [  D#3   ]
+	 *
+	 * 
+	 * [   20   ]  [   21   ]  [   22   ]  [   23   ]  [   24   ]  [   25   ]  [   26   ]  [   27   ]  [   28   ]  [   29   ]
+	 * [ Double ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [  G#1   ]  [   A1   ]  [  A#1   ]  [   B1   ]  [   C2   ]  [  C#2   ]  [   D2   ]  [  D#2   ]  [   E2   ]  [   F2   ]
+	 *
+	 * 
+	 * [   10   ]  [   11   ]  [   12   ]  [   13   ]  [   14   ]  [   15   ]  [   16   ]  [   17   ]  [   18   ]  [   19   ]
+	 * [    O   ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [        ]  [    >   ]
+	 * [  A#0   ]  [   B0   ]  [   C1   ]  [  C#1   ]  [   D1   ]  [  D#1   ]  [   E1   ]  [   F1   ]  [  F#1   ]  [   G1   ]
+     *
+     * 
+	 * [ ------ ]  [   1    ]  [   2    ]  [   3    ]  [   4    ]  [   5    ]  [   6    ]  [   7    ]  [   8    ]  [ ------ ]
+	 * [ ------ ]  [ Record ]  [ TrkSel ]  [  Mute  ]  [  Solo  ]  [ Volume ]  [   Pan  ]  [  Sends ]  [  Stop  ]  [ ------ ]
+	 * [   C0   ]  [  C#0   ]  [   D0   ]  [  D#0   ]  [   E0   ]  [   F0   ]  [  F#0   ]  [   G0   ]  [  G#0   ]  [   A0   ]
+	 *
+	 * 
+	 *                                                       [   99*  ] // with sysex only
+	 *                                                       [  Side  ]
+	 *                                                       [ ------ ]
+	 */
 };
 
 export default LaunchPad;

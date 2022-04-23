@@ -1,12 +1,8 @@
 import JZZ from 'jzz';
 import LaunchPad from './class/LaunchPad';
 
-//////////////////////////
-// Messages using velocity-based colors from 0 to 127
-//
 // Connect the refresh button an action
 // document.getElementById('refresh').addEventListener('click',function(){refreshJazz()});
-//
 
 //////////////////////////
 
@@ -26,6 +22,16 @@ const initApp = function() {
 	_LP = new LaunchPad({
 		input: JZZ().openMidiIn(default_port),
 		output: JZZ().openMidiOut(default_port),
+		gridState: [[0, 0, 0, 0, 0, 0, 0, 0, 0,9],
+								[0,56,57,58,59,60,61,62,63,0],
+								[0,48,49,50,51,52,53,54,55,0],
+								[0,40,41,42,43,44,45,46,47,0],
+								[0,32,33,34,35,36,37,38,39,0],
+								[0,24,25,26,27,28,29,30,31,0],
+								[0,16,17,18,19,20,21,22,23,0],
+								[0, 8, 9,10,11,12,13,14,15,0],
+								[0, 0, 1, 2, 3, 4, 5, 6, 7,0],
+								[0, 0, 0, 0, 0, 0, 0, 0, 0,0]],
 	});
 
 	/////////////////////
@@ -37,10 +43,11 @@ const initApp = function() {
 	// _LP.sendScrollText([6,0,[0x04, 'Hello', 0x06, 'District!']]);
 
 	// Cycle a pad between colors, by default will noteOff at end unless 5th param = false
-	_LP.sendColorCycle(0, 'C4', [100, 6, 12, 17, 24]);
+	// _LP.sendColorCycle(0, 83, [100, 6, 12, 17, 24]);
+	// _LP.sendColorCycleSysEx(99, [100, 6, 12, 17, 24], 1000, false);
 
 	// After 10s turn off the pads.
-	_LP.sendAllOff(10000);
+	// _LP.sendAllOff(10000);
 
 };
 

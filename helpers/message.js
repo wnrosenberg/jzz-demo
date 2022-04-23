@@ -1,12 +1,8 @@
 import JZZ from 'jzz';
 
+//
 // Library for handling MIDI messages.
-
-// MIDI Messages
-const MSG_CLOCK = [0xf8];
-// const MSG_DEVICE_INQ = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
-// const MSG_VERSION_INQ = [0xF0, 0x00, 0x20, 0x29, 0x00, 0x70, 0xf7];
-const MSG_SCROLL_END = [...CMD_HEADER, ...TYPE_SCROLL_END, ...CMD_TAIL];
+//
 
 // Sysex Commands: HEADER + TYPE + DATA + TAIL
 const CMD_HEADER = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x10];
@@ -33,6 +29,14 @@ export const TYPE_LAYOUT_STATUS = [0x2f]; // response to SET
 // Sysex Types: Get / Set Current Layout
 export const TYPE_MODE_SET = [0x21]; // 00=ableton, 01=standalone
 export const TYPE_MODE_STATUS = [0x2d]; // response to SET
+
+
+// MIDI Messages
+const MSG_CLOCK = [0xf8];
+// const MSG_DEVICE_INQ = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
+// const MSG_VERSION_INQ = [0xF0, 0x00, 0x20, 0x29, 0x00, 0x70, 0xf7];
+const MSG_SCROLL_END = [...CMD_HEADER, ...TYPE_SCROLL_END, ...CMD_TAIL];
+
 
 
 // @TODO data validation

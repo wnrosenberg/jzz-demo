@@ -22,15 +22,15 @@ const initApp = function() {
 	_LP = new LaunchPad({
 		input: JZZ().openMidiIn(default_port),
 		output: JZZ().openMidiOut(default_port),
-		gridState: [[0, 0, 0, 0, 0, 0, 0, 0, 0,9],
-								[0,56,57,58,59,60,61,62,63,0],
-								[0,48,49,50,51,52,53,54,55,0],
-								[0,40,41,42,43,44,45,46,47,0],
-								[0,32,33,34,35,36,37,38,39,0],
-								[0,24,25,26,27,28,29,30,31,0],
-								[0,16,17,18,19,20,21,22,23,0],
-								[0, 8, 9,10,11,12,13,14,15,0],
-								[0, 0, 1, 2, 3, 4, 5, 6, 7,0],
+		gridState: [[0, 0, 0, 0, 0, 0, 0, 0, 0,0],
+								[0,36, 0, 0,36, 0, 0,36, 0,0],
+								[0,36, 1, 0,36, 1, 0, 0, 1,0],
+								[0,36, 1, 0,36, 1, 0, 0, 0,0],
+								[0,36,36,36,36, 1, 0,36, 0,0],
+								[0,36, 1, 1,36, 1, 0,36, 1,0],
+								[0,36, 1, 0,36, 1, 0,36, 1,0],
+								[0,36, 1, 0,36, 1, 0,36, 1,0],
+								[0, 0, 1, 0, 0, 1, 0, 0, 1,0],
 								[0, 0, 0, 0, 0, 0, 0, 0, 0,0]],
 	});
 
@@ -41,6 +41,8 @@ const initApp = function() {
 
 	// Scroll a message
 	// _LP.sendScrollText([6,0,[0x04, 'Hello', 0x06, 'District!']]);
+	// _LP.sendScrollText([45,100,[0x05, 'IN THE MIX WITH DJ PUPSTAR!   twitch.tv/jaypuppy42   AWOOOOO!    ']]);
+
 
 	// Cycle a pad between colors, by default will noteOff at end unless 5th param = false
 	// _LP.sendColorCycle(0, 83, [100, 6, 12, 17, 24]);

@@ -17,6 +17,23 @@ import {
 	TYPE_MODE_SET
 } from '../helpers/message';
 
+/**
+ * Novation Launchpad Pro MK2 - JZZ Library
+ * @author github.com/wnrosenberg
+ *
+ * ----------------------------------------
+ *
+ * @TODO:
+ *
+ *   - Color Palette (sendPaletteOpen(), ...)
+ *     > implement widget functionality via pad change messages.
+ *
+ *   - Scroll Text by Column Change(getScrollTextChange(), ...)
+ * 	   > allow text scrolling by column change, which will allow for more creative
+ *       scrolling of text than the firmware allows, including color changing text
+ *       and aftertouch events.
+ */
+
 class LaunchPad {
 
 	// Instance fields
@@ -101,7 +118,7 @@ class LaunchPad {
 		}
 		if (newGrid.length) {
 			this.sendPadChange(newGrid);
-		}	
+		}
 	}
 
 	//
@@ -136,7 +153,7 @@ class LaunchPad {
 	getRowChange(row) {
 		return getMsg(TYPE_ROW_COLOR, row);
 	}
-	
+
 	// Send / get msg to change the entire grid to a color.
 	// @param color 	Array(1) with a single color.
 	sendAllChange(color) {
@@ -276,7 +293,7 @@ class LaunchPad {
 		// palette has 16 rows of 10, where the first and last of each row is 0.
 		// when start = 0, rows 0, 1, 2, 3, 4, 5, 6, 7 are displayed
 		// when start = 8, rows 8, 9,10,11,12,13,14,15 are displayed
-		
+
 		let paletteRowStart = 0; // from 0 to 8.
 		if (rowStart !== null && rowStart >= 0 && rowStart <= 8) {
 			paletteRowStart = rowStart;
@@ -309,7 +326,36 @@ class LaunchPad {
 
 		this.sendGridState(paletteGridState);
 	}
-	
+
+	// Scroll text using column change / pad change messages.
+	getScrollTextChange(color, loop, text) {
+		// The built-in method uses these parameters.
+		// Color = 1 - 127
+		// Loop = 0 (none), 1 - ???
+		// Text = [0x04, 'speed bit plus message',...]
+		//
+		// To do the scrolling text as pad change messages, we have to express message strings
+		// as an array of on or off. There should be a separate method which simply returns
+		// the on/off array which for example could be used by another method that could
+		// update the color of the pad if it is currently on or has just turned off.
+		//
+		// TODO:
+		//  - Using the grid(s) below, define the array for each supported character.
+		//  - Use 0 for off and 1 for on.
+		//  - Be sure to include trailing whitespace that separates two consecutive letters.
+		//     - Whitespace (' ') is its own character and needs an entry in the array.
+		//  - Pad change messages will be sent by updating colors via column messages,
+		//       so truncate the arrays at the first instance of a column with all '_'.
+		// [[ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ],
+		//  [ _ , _ , _ , _ , _ , _ , _ , _ , _ , _ ]];
+		//
+	} // and also add sendScrollTextChange() {}
 
 	/* #############################################################################################################
 	 * [ ------ ]#[   91   ]#[   92   ]#[   93   ]#[   94   ]#[   95   ]#[   96   ]#[   97   ]#[   98   ]#[ ------ ]

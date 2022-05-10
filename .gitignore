@@ -1,4 +1,6 @@
 .cache/*
+.parcel-cache/*
+package-lock.json
 dist/*
 node_modules/*
 Thumbs.db

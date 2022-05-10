@@ -40,12 +40,13 @@ const initApp = function() {
 	// _LP.sendAllChange([100]);
 
 	// Scroll a message
-	// _LP.sendScrollText([6,0,[0x04, 'Hello', 0x06, 'District!']]);
-	// _LP.sendScrollText([45,100,[0x04, 'In the mix with DJ PupStar!  ',0x06,'   Follower Goal: 80/100    ']]);
-	// _LP.sendScrollText([45,100,[0x01, 'Hello']]);
-	// console.log('hello');
+	// _LP.sendScrollText([45,100,[0x04, 'In the mix with DJ PupStar!  ',0x06,' MONDAY NIGHT DISCO! ']]);
 
-	_LP.getScrollTextChange();
+	// Attach scroll text event to the button.
+	const scrollStartButton = document.querySelector('button#scrollstart');
+	if (scrollStartButton) scrollStartButton.addEventListener('click', (e) => {
+		return _LP.sendScrollTextChange({text:'Hi!', loop: 5, delay: 200});	
+	});
 
 
 	// Cycle a pad between colors, by default will noteOff at end unless 5th param = false

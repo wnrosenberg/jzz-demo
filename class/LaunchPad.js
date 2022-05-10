@@ -17,6 +17,8 @@ import {
 	TYPE_MODE_SET
 } from '../helpers/message';
 
+import { characters } from '../helpers/scrolltext';
+
 /**
  * Novation Launchpad Pro MK2 - JZZ Library
  * @author github.com/wnrosenberg
@@ -41,17 +43,8 @@ class LaunchPad {
 	// Instance fields
 	input; // the input port
 	output; // the output port
-	gridState = [[null,0,0,0,0,0,0,0,0,null],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [   0,0,0,0,0,0,0,0,0,0   ],
-	             [null,0,0,0,0,0,0,0,0,null]];
-	palette = [[0,120,121,122,123,124,125,126,127,0],
+	gridState = this.getEmptyGridState();
+	palette = [[ 0,120,121,122,123,124,125,126,127,0],
 				[0,112,113,114,115,116,117,118,119,0],
 				[0,104,105,106,107,108,109,110,111,0],
 				[0, 96, 97, 98, 99,100,101,102,103,0],
@@ -67,6 +60,7 @@ class LaunchPad {
 				[0, 16, 17, 18, 19, 20, 21, 22, 23,0],
 				[0,  8,  9, 10, 11, 12, 13, 14, 15,0],
 				[0,  0,  1,  2,  3,  4,  5,  6,  7,0]];
+
 
 	/**
 	 * LaunchPad() - instantiate a new LaunchPad object.
@@ -104,7 +98,16 @@ class LaunchPad {
 		} // else use all 0s
 	}
 
-	// Convert a 10x10 grid state into an array for sendPadChange and send it.
+
+
+	//
+	//
+	// Working with Grid State
+	//
+	//
+
+	// Convert a 10x10 grid state into an array for sendPadChange and send it, updating internal grid.
+	// @TODO: Add padding to the grid to convert it to a 10 x 10 for output.
 	recallGridState(gridState) {
 		const newGrid = [];
 		// Check that the dimensions are correct (10x10)
@@ -117,14 +120,56 @@ class LaunchPad {
 					}
 				});
 			});
+		} else {
+			// @TODO: Add padding to the grid to convert it to a 10 x 10 for output.
+			console.error('Unable to recall grid state with irregular dimensions.');
 		}
+		// If there is a new grid to change to, perform the action and update the internal grid.
 		if (newGrid.length) {
 			this.sendPadChange(newGrid);
+			this.gridState = gridState;
 		}
 	}
 
+	// Get a copy of the current grid state.
+	getCurrentGridState() {
+		return this.gridState.map(row => {return [...row]});
+	}
+
+	// Get an empty 10 x 10 grid.
+	getEmptyGridState() {
+		return [
+			[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]
+		];
+	}
+
+	// Get the nth column from a grid as an array.
+	getGridColumn(grid, n) {
+		const column = [];
+		grid.forEach((row) => {
+			column.push(row[n]);
+		});
+		return column;
+	}
+
+	// Transpose a grid of any size (convert an array of rows into an array of columns and vice-versa).
+	getTransposedGrid(grid) {
+		const newGrid = [];
+		grid.forEach((row, r) => {
+			row.forEach((pad, c) => {
+				newGrid[c][r] = pad;
+			});
+		});
+		return newGrid;
+	}
+
+
+
+	//
 	//
 	// MIDI message Senders & Getters
+	//
 	//
 
 	// Send / get a MIDI msg to change pad color.
@@ -212,7 +257,8 @@ class LaunchPad {
 		return getMsg(TYPE_SCROLL, data);
 	}
 
-	// Send an all off message.
+
+	// Send an all off message. Stops text scrolling, pad flashing, and pad pulsing.
 	sendAllOff(delay = 0) {
 		if (!delay) {
 			this.sendScrollText([]);
@@ -223,12 +269,22 @@ class LaunchPad {
 		}
 	}
 
+	// Get a basic NOTE ON message.
 	getNoteOn(channel, note, velocity) {
 		return JZZ.MIDI.noteOn(channel, note, velocity);
 	}
+
+	// Get a basic NOTE OFF message.
 	getNoteOff(channel, note) {
 		return JZZ.MIDI.noteOff(channel, note);
 	}
+
+
+	//
+	//
+	// Basic animations using note on/off and sysex.
+	//
+	//
 
 	// Send msgs to cycle a pad through colors.
 	// data = [channel, note, delay, colors[]]
@@ -260,32 +316,273 @@ class LaunchPad {
 		})
 	}
 
-	//
-	// Grid State Helpers
-	//
+	// Scroll text using column change / pad change messages.
+	// options = {preserveContent, revealContent, loop, delay}
+	// @TODO: Use padChange instead of colChange to reduce calls.
+	sendScrollTextChange(options=null) {
+		const defaults = {
+			text: 'Hello World!',
+			delay: 100,
+			color: 55,
+			loop: 0,
+			preserveContent: false,
+			revealContent: false,
+			startsAt: 0,
+		};
 
-	sendGridState(gridState) {
-		const newGrid = [];
-		if (gridState.length === 10 && gridState[0].length === 10) {
-			gridState.forEach((row, rowIndex) => {
-				row.forEach((col, colIndex) => {
-					const index = (9 - rowIndex) * 10 + colIndex;
-					if ([0, 9, 90].indexOf(index) === -1) {
-						if (null===col) return;
-						newGrid.push([index, col]);
-					}
-				});
+		const getOption = (key) => {
+			return options ? ( options[key] ? options[key] : defaults[key]) : defaults[key];
+		}
+
+		// -- Initialize!
+
+		// The text that we're going to scroll (default: 'Hello World!')
+		const text = getOption('text');
+
+		// Set the delay between column output calls in ms (default: 100ms)
+		const delay = getOption('delay');
+
+		// Set the color to be displayed when we output (default: 55)
+		const color = getOption('color');
+
+		// Number of times to loop after scrolling once (default: 0)
+		const loop = getOption('loop');
+
+		// Whether to return to the previous grid (true) or display blank (default: false)
+		const preserveContent = getOption('preserveContent');
+		
+		// Whether to reveal gridOnComplete (true) or just display it (default: false)
+		const revealContent = getOption('revealContent');
+
+		// Delay to start of animation (default: 0)
+		const startsAt = getOption('startsAt');
+
+		// The grid to show when animation is complete.
+		let gridOnComplete = []; // grid to show when complete.
+		if (preserveContent) {
+			gridOnComplete = this.getCurrentGridState();
+		} else {
+			gridOnComplete = this.getEmptyGridState();
+		}
+
+		// The allowed characters that we can output.
+		const allowed = Object.keys(characters);
+
+		// The message text.
+		let message = '';
+
+		// Filter the text argument by the allowed letters.
+		message = [...text].reduce((msg, letter) => {
+			if (allowed.indexOf(letter) > -1) {
+				return `${msg}${letter}`;
+			} else {
+				return msg;
+			}
+		}, '');
+
+		// The last character in the message.
+		const lastLetter = message.charAt(message.length - 1);
+
+		// A single character in the message.
+		let letter = '';
+
+		// The pads that this character represents.
+		let charPads = [[],[],[],[],[],[],[],[]];
+
+		// The pads for the full message.
+		const output = [[],[],[],[],[],[],[],[]];
+
+		// Object that stores the col change messages indexed by delay amount.
+		const colsByDelay = {};
+
+		// The length of a row or column.
+		const deviceSize = 10;
+
+
+		// -- Build the output pattern!
+
+		// For each letter in the message.
+		for (var i = 0; i < message.length; i++) {
+  			letter = message.charAt(i);
+  			// Get the grid for this letter.
+			charPads = characters[letter];
+			// And append each row of it to the output.
+			output.forEach((row, i) => {
+				output[i] = [...row, ...charPads[i]];
+			});
+		};
+
+		// If revealContent is off, then we need to pad the end of the message with empty
+		// pads before gridOnComplete is displayed, whether preserveContent is on or not.
+		// @TODO: Find a more exact way to determine number of pad columns needed.
+		if (!revealContent) {
+			output.forEach((row) => {
+				// If the message ends with punctuation, use less space.
+				if ([':', ';', '.', ',', ' '].indexOf(lastLetter) > -1) {
+					row.push(0,0,0,0,0,0,0); // extra 7 pads
+				} else {
+					row.push(0,0,0,0,0,0,0,0,0); // extra 9 pads
+				}
+				return row;
 			});
 		}
-		if (newGrid.length) {
-			this.sendPadChange(newGrid);
+		// console.log('rows to output', output);
+
+
+		// -- Define timing!
+
+		// @TODO: Use the MIDI clock feature of JZZ to do this.
+		// For now we're gonna use setTimeout.
+
+		// The length of one message row.
+		const msgLen = output[0].length;
+		// console.log('message length: ', msgLen);
+
+		// First column is output on right side at time = startsAt.
+
+		// Last column is output on right side at time = msgDuration.
+		// If there was padding, then this is the time at which the screen is empty.
+		const msgDuration = startsAt + (msgLen - 1) * delay;
+		// console.log('message duration: ', msgDuration);
+
+		// The total duration for the animation including delay after final scroll.
+		// When revealContent is on, this time is increased by revealing the grid.
+		let totalDuration = msgDuration + delay;
+		// console.log('total duration (initial): ', totalDuration);
+
+		
+
+		// -- Output the messages by column!
+
+		// For each column in the output...
+		for (let i = 0; i < msgLen; i++) {
+
+			// Initialize the column array.
+			let columnPads = [];
+
+			// The height of a column is the length of the output.
+			const columnHeight = output.length;
+
+			// Add top and bottom padding if height isnt 10.
+			const addColPadding = columnHeight !== deviceSize;
+
+			// Collect the pads into the array.
+			for (let j = 0; j < columnHeight; j++) {
+				if (j === 0 && addColPadding) {
+					columnPads.push(0);
+				}
+				columnPads.push(output[j][i] * color);
+				if (j === columnHeight-1 && addColPadding) {
+					columnPads.push(0);
+				}
+			}
+
+			// Row numbers start from bottom, so reverse the order here.
+			columnPads = columnPads.reverse();
+
+			// Send the array to each of the columns with a delay.
+
+			// Start scroll from right side (column = 9) and finish on left side (column = 0)
+
+			let colsToScroll = deviceSize - 1; // a max of 9 scrolls before its off the grid.
+
+			// The last 9 columns of the message do not scroll completely.
+			if (i === msgLen - 1) colsToScroll = 0; // The last column scrolls 0 positions.
+			if (i === msgLen - 2) colsToScroll = 1;
+			if (i === msgLen - 3) colsToScroll = 2;
+			if (i === msgLen - 4) colsToScroll = 3;
+			if (i === msgLen - 5) colsToScroll = 4;
+			if (i === msgLen - 6) colsToScroll = 5;
+			if (i === msgLen - 7) colsToScroll = 6;
+			if (i === msgLen - 8) colsToScroll = 7;
+			if (i === msgLen - 9) colsToScroll = 8;
+
+			// Fill colsByDelay array with the column change messages arranged by delay time.
+			for (let k = 0; k <= colsToScroll; k++) {
+				// delay * k + delay * i
+				let calcDelay = delay * (k + i);
+
+				// Set the array for this calcDelay if not exists.
+				if (Object.keys(colsByDelay).indexOf(`${calcDelay}`) === -1) {
+					colsByDelay[`${calcDelay}`] = [];
+				}
+
+				// Add the change column message to the array for this calcDelay.
+				colsByDelay[`${calcDelay}`].push( this.getColChange([9 - k, ...columnPads]) );
+			}
+			// console.log('colsByDelay: ', colsByDelay);
 		}
+
+
+		// Now that we have an array containing col change messages indexed by delay, we can execute it.
+		Object.keys(colsByDelay).forEach((key) => {
+			setTimeout(()=>{
+				colsByDelay[key].forEach((message) => {
+					// console.log(`sending message `, message , `at time = ${key}`);
+					this.output.send(message);
+					// this.sendColChange(message); // is supposed to send data not message
+				});
+			}, key);
+		}); 
+
+
+		// -- Reveal the final grid or just display it!
+
+		// If we are revealing the gridOnComplete column by column:
+		if (revealContent) {
+
+			// Convert the grid (array of rows) to an array of columns.
+			let colsOnComplete = this.getTransposedGrid(gridOnComplete);
+
+			// Start displaying each column starting from the left, at t = msgDuration + delay.
+			for (let l = 0; l < deviceSize; l++) {
+				setTimeout(() => {
+					return this.sendColChange([9 - l, ...colsOnComplete[9 - l] ]);
+				}, msgDuration + delay * (l + 1));	
+			}
+
+			// Next animation can happen on msgDuration + delay * 11.
+			totalDuration = msgDuration + delay * 11;
+			// console.log('message duration (after revealing): ', totalDuration);
+
+		} else {
+
+			// Recall the grid in one step.
+			setTimeout(() => {
+				return this.recallGridState(gridOnComplete);
+			}, msgDuration + delay);
+
+			// Next animation can happen on msgDuration + delay * 2
+			totalDuration = msgDuration + delay * 2;
+			// console.log('message duration (after grid recall): ', totalDuration);
+
+		}
+
+		// return the total duration of the animation so other methods can chain after this one.
+
+		// if (loop > 0) {
+		// 	return this.sendScrollTextChange({
+		// 		text: text,
+		// 		delay: delay,
+		// 		color: color,
+		// 		loop: loop - 1,
+		// 		preserveContent: preserveContent,
+		// 		revealContent: revealContent,
+		// 		startAt: totalDuration,
+		// 	});
+		// }
+		return totalDuration;
+
 	}
 
 
 	//
-	// Color Palatte
 	//
+	// Working with the Color Palette
+	//
+	//
+
+	// Open the palette so that a color can be chosen.
 	sendPaletteOpen(rowStart=null, current=null) {
 		let upArrow = 22;
 		let downArrow = 22;
@@ -326,905 +623,51 @@ class LaunchPad {
 			[null,0,0,0,0,0,0,0,0,null],
 		];
 
-		this.sendGridState(paletteGridState);
+		this.recallGridState(paletteGridState);
 	}
 
-	// Scroll text using column change / pad change messages.
-	getScrollTextChange(color, loop, text) {
-		// The built-in method uses these parameters.
-		// Color = 1 - 127
-		// Loop = 0 (none), 1 - ???
-		// Text = [0x04, 'speed bit plus message',...]
-		//
-		// To do the scrolling text as pad change messages, we have to express message strings
-		// as an array of on or off. There should be a separate method which simply returns
-		// the on/off array which for example could be used by another method that could
-		// update the color of the pad if it is currently on or has just turned off.
-
-		const characters = {
-			'A': [[ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-				  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-				  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-				  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-				  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'a': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'B': [[ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'b': [[ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'C': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'c': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'D': [[ 0 , 1 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'd': [[ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'E': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'e': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'F': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'f': [[ 0 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'G': [[ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'g': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ]],
-
-			'H': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-				  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'h': [[ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'I': [[ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'i': [[ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 ]],
-
-			'J': [[ 0 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'j': [[ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ]],
-
-			'K': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'k': [[ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'L': [[ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'l': [[ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 ]],
-
-			'M': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'm': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'N': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'n': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'O': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'o': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'P': [[ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'p': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'Q': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'q': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ]],
-
-			'R': [[ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'r': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'S': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			's': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'T': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			't': [[ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'U': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'u': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'V': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'v': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'X': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'x': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'Y': [[ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'y': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ]],
-
-			'Z': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'z': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'0': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'1': [[ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'2': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'3': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'4': [[ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'5': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'6': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'7': [[ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'8': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'9': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'!': [[ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ]],
-
-			'@': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'#': [[ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'$': [[ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'%': [[ 0 , 1 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'^': [[ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'&': [[ 0 , 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'*': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'(': [[ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 ]],
-
-			')': [[ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 ]],
-
-			'_': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'-': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'+': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'=': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'[': [[ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'{': [[ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			']': [[ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 1 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'}': [[ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			';': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ]],
-
-			':': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'\'': [[ 0 , 0 , 1 , 0 ],
-			 	   [ 0 , 0 , 1 , 0 ],
-			 	   [ 0 , 1 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 ]],
-
-			'"': [[ 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 ]],
-
-			'<': [[ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'>': [[ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'.': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			',': [[ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 ]],
-
-			'?': [[ 0 , 0 , 1 , 1 , 1 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'/': [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	  [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-
-			'|': [[ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ],
-			 	  [ 0 , 1 , 0 ]],
-
-			"\\": [[ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 1 , 0 , 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 1 , 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 1 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 , 1 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 , 0 , 1 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ],
-			 	   [ 0 , 0 , 0 , 0 , 0 , 0 , 0 ]],
-		};
-
-		console.log(characters);
-		const allowed = Object.keys(characters);
-		console.log(allowed);
-
-		const message = 'Hello';
-		let letter = ''; // single character in message
-		let charPads = [[],[],[],[],[],[],[],[]];
-		const output = [[],[],[],[],[],[],[],[]];
-
-		for (var i = 0; i < message.length; i++) {
-  			letter = message.charAt(i);
-		
-			if (allowed.indexOf(letter) > -1) {
-				console.log(`letter ${letter} is allowed.`);
-				charPads = characters[letter];
-
-				console.log(charPads);
-				output.forEach((row, i) => {
-					output[i] = [...row, ...charPads[i]];
-				});
-
-			} else {
-				console.log(`character ${letter} is not allowed`);
-			}
-		};
-		console.log(output);
-
-
-		//
-	} // and also add sendScrollTextChange() {}
-
-	/* #############################################################################################################
-	 * [ ------ ]#[   91   ]#[   92   ]#[   93   ]#[   94   ]#[   95   ]#[   96   ]#[   97   ]#[   98   ]#[ ------ ]
-	 * [ ------ ]#[   up   ]#[   dn   ]#[   lf   ]#[   rt   ]#[ Session]#[  Note  ]#[ Device ]#[  User  ]#[ ------ ]
-	 * [  F#7   ]#[   G7   ]#[  G#7   ]#[   A7   ]#[  A#7   ]#[   B7   ]#[   C8   ]#[  C#8   ]#[   D8   ]#[  D#8   ]
-	 * #############################################################################################################
-	 * [   80   ]#[   81   ]#[   82   ]#[   83   ]#[   84   ]#[   85   ]#[   86   ]#[   87   ]#[   88   ]#[   89   ]
-	 * [  Shift ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [  G#6   ]#[   A6   ]#[  A#6   ]#[   B6   ]#[   C7   ]#[  C#7   ]#[   D7   ]#[  D#7   ]#[   E7   ]#[   F7   ]
-	 * #############################################################################################################
-	 * [   70   ]#[   71   ]#[   72   ]#[   73   ]#[   74   ]#[   75   ]#[   76   ]#[   77   ]#[   78   ]#[   79   ]
-	 * [  Click ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [  A#5   ]#[   B5   ]#[   C6   ]#[  C#6   ]#[   D6   ]#[  D#6   ]#[   E6   ]#[   F6   ]#[  F#6   ]#[   G6   ]
-	 * #############################################################################################################
-	 * [   60   ]#[   61   ]#[   62   ]#[   63   ]#[   64   ]#[   65   ]#[   66   ]#[   67   ]#[   68   ]#[   69   ]
-	 * [  Undo  ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [   C5   ]#[  C#5   ]#[   D5   ]#[  D#5   ]#[   E5   ]#[   F5   ]#[  F#5   ]#[   G5   ]#[  G#5   ]#[   A5   ]
-	 * #############################################################################################################
-	 * [   50   ]#[   51   ]#[   52   ]#[   53   ]#[   54   ]#[   55   ]#[   56   ]#[   57   ]#[   58   ]#[   59   ]
-	 * [ Delete ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [   D4   ]#[  D#4   ]#[   E4   ]#[   F4   ]#[  F#4   ]#[   G4   ]#[  G#4   ]#[   A4   ]#[  A#4   ]#[   B4   ]
-	 * #############################################################################################################
-	 * [   40   ]#[   41   ]#[   42   ]#[   43   ]#[   44   ]#[   45   ]#[   46   ]#[   47   ]#[   48   ]#[   49   ]
-	 * [ Quantze]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [   E3   ]#[   F3   ]#[  F#3   ]#[   G3   ]#[  G#3   ]#[   A3   ]#[  A#3   ]#[   B3   ]#[   C4   ]#[  C#4   ]
-	 * #############################################################################################################
-	 * [   30   ]#[   31   ]#[   32   ]#[   33   ]#[   34   ]#[   35   ]#[   36   ]#[   37   ]#[   38   ]#[   39   ]
-	 * [ Duplic8]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [  F#2   ]#[   G2   ]#[  G#2   ]#[   A2   ]#[  A#2   ]#[   B2   ]#[   C3   ]#[  C#3   ]#[   D3   ]#[  D#3   ]
-	 * #############################################################################################################
-	 * [   20   ]#[   21   ]#[   22   ]#[   23   ]#[   24   ]#[   25   ]#[   26   ]#[   27   ]#[   28   ]#[   29   ]
-	 * [ Double ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [  G#1   ]#[   A1   ]#[  A#1   ]#[   B1   ]#[   C2   ]#[  C#2   ]#[   D2   ]#[  D#2   ]#[   E2   ]#[   F2   ]
-	 * #############################################################################################################
-	 * [   10   ]#[   11   ]#[   12   ]#[   13   ]#[   14   ]#[   15   ]#[   16   ]#[   17   ]#[   18   ]#[   19   ]
-	 * [    O   ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
-	 * [  A#0   ]#[   B0   ]#[   C1   ]#[  C#1   ]#[   D1   ]#[  D#1   ]#[   E1   ]#[   F1   ]#[  F#1   ]#[   G1   ]
-	 * #############################################################################################################
-	 * [ ------ ]#[   1    ]#[   2    ]#[   3    ]#[   4    ]#[   5    ]#[   6    ]#[   7    ]#[   8    ]#[ ------ ]
-	 * [ ------ ]#[ Record ]#[ TrkSel ]#[  Mute  ]#[  Solo  ]#[ Volume ]#[   Pan  ]#[  Sends ]#[  Stop  ]#[ ------ ]
-	 * [   C0   ]#[  C#0   ]#[   D0   ]#[  D#0   ]#[   E0   ]#[   F0   ]#[  F#0   ]#[   G0   ]#[  G#0   ]#[   A0   ]
-	 * #############################################################################################################
+	/*   #############################################################################################################
+	 *   [ ------ ]#[   91   ]#[   92   ]#[   93   ]#[   94   ]#[   95   ]#[   96   ]#[   97   ]#[   98   ]#[ ------ ]
+	 * 9 [ ------ ]#[   up   ]#[   dn   ]#[   lf   ]#[   rt   ]#[ Session]#[  Note  ]#[ Device ]#[  User  ]#[ ------ ]
+	 *   [  F#7   ]#[   G7   ]#[  G#7   ]#[   A7   ]#[  A#7   ]#[   B7   ]#[   C8   ]#[  C#8   ]#[   D8   ]#[  D#8   ]
+	 *   #############################################################################################################
+	 *   [   80   ]#[   81   ]#[   82   ]#[   83   ]#[   84   ]#[   85   ]#[   86   ]#[   87   ]#[   88   ]#[   89   ]
+	 * 8 [  Shift ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [  G#6   ]#[   A6   ]#[  A#6   ]#[   B6   ]#[   C7   ]#[  C#7   ]#[   D7   ]#[  D#7   ]#[   E7   ]#[   F7   ]
+	 *   #############################################################################################################
+	 *   [   70   ]#[   71   ]#[   72   ]#[   73   ]#[   74   ]#[   75   ]#[   76   ]#[   77   ]#[   78   ]#[   79   ]
+	 * 7 [  Click ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [  A#5   ]#[   B5   ]#[   C6   ]#[  C#6   ]#[   D6   ]#[  D#6   ]#[   E6   ]#[   F6   ]#[  F#6   ]#[   G6   ]
+	 *   #############################################################################################################
+	 *   [   60   ]#[   61   ]#[   62   ]#[   63   ]#[   64   ]#[   65   ]#[   66   ]#[   67   ]#[   68   ]#[   69   ]
+	 * 6 [  Undo  ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [   C5   ]#[  C#5   ]#[   D5   ]#[  D#5   ]#[   E5   ]#[   F5   ]#[  F#5   ]#[   G5   ]#[  G#5   ]#[   A5   ]
+	 *   #############################################################################################################
+	 *   [   50   ]#[   51   ]#[   52   ]#[   53   ]#[   54   ]#[   55   ]#[   56   ]#[   57   ]#[   58   ]#[   59   ]
+	 * 5 [ Delete ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [   D4   ]#[  D#4   ]#[   E4   ]#[   F4   ]#[  F#4   ]#[   G4   ]#[  G#4   ]#[   A4   ]#[  A#4   ]#[   B4   ]
+	 *   #############################################################################################################
+	 *   [   40   ]#[   41   ]#[   42   ]#[   43   ]#[   44   ]#[   45   ]#[   46   ]#[   47   ]#[   48   ]#[   49   ]
+	 * 4 [ Quantze]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [   E3   ]#[   F3   ]#[  F#3   ]#[   G3   ]#[  G#3   ]#[   A3   ]#[  A#3   ]#[   B3   ]#[   C4   ]#[  C#4   ]
+	 *   #############################################################################################################
+	 *   [   30   ]#[   31   ]#[   32   ]#[   33   ]#[   34   ]#[   35   ]#[   36   ]#[   37   ]#[   38   ]#[   39   ]
+	 * 3 [ Duplic8]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [  F#2   ]#[   G2   ]#[  G#2   ]#[   A2   ]#[  A#2   ]#[   B2   ]#[   C3   ]#[  C#3   ]#[   D3   ]#[  D#3   ]
+	 *   #############################################################################################################
+	 *   [   20   ]#[   21   ]#[   22   ]#[   23   ]#[   24   ]#[   25   ]#[   26   ]#[   27   ]#[   28   ]#[   29   ]
+	 * 2 [ Double ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [  G#1   ]#[   A1   ]#[  A#1   ]#[   B1   ]#[   C2   ]#[  C#2   ]#[   D2   ]#[  D#2   ]#[   E2   ]#[   F2   ]
+	 *   #############################################################################################################
+	 *   [   10   ]#[   11   ]#[   12   ]#[   13   ]#[   14   ]#[   15   ]#[   16   ]#[   17   ]#[   18   ]#[   19   ]
+	 * 1 [    O   ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[        ]#[    >   ]
+	 *   [  A#0   ]#[   B0   ]#[   C1   ]#[  C#1   ]#[   D1   ]#[  D#1   ]#[   E1   ]#[   F1   ]#[  F#1   ]#[   G1   ]
+	 *   #############################################################################################################
+	 *   [ ------ ]#[   1    ]#[   2    ]#[   3    ]#[   4    ]#[   5    ]#[   6    ]#[   7    ]#[   8    ]#[ ------ ]
+	 * 0 [ ------ ]#[ Record ]#[ TrkSel ]#[  Mute  ]#[  Solo  ]#[ Volume ]#[   Pan  ]#[  Sends ]#[  Stop  ]#[ ------ ]
+	 *   [   C0   ]#[  C#0   ]#[   D0   ]#[  D#0   ]#[   E0   ]#[   F0   ]#[  F#0   ]#[   G0   ]#[  G#0   ]#[   A0   ]
+	 *   #############################################################################################################
+	 *        0          1          2          3          4          5          6          7          8          9
 	 *                                                   [   99*  ] // with sysex only
 	 *                                                   [  Side  ]
 	 *                                                   [ ------ ]

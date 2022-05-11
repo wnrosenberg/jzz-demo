@@ -1,7 +1,6 @@
 import JZZ from "https://cdn.skypack.dev/jzz@1.5.1";
 import {
 	getMsg,
-	sendMsg,
 	TYPE_PAD_COLOR,
 	TYPE_COL_COLOR,
 	TYPE_ROW_COLOR,

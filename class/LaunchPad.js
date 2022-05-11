@@ -1,4 +1,4 @@
-import JZZ from 'jzz';
+import JZZ from "https://cdn.skypack.dev/jzz@1.5.1";
 import {
 	getMsg,
 	sendMsg,
@@ -15,9 +15,9 @@ import {
 	TYPE_LAYOUT_SET,
 	TYPE_MODE_STATUS,
 	TYPE_MODE_SET
-} from '../helpers/message';
+} from '../helpers/message.js';
 
-import { characters } from '../helpers/scrolltext';
+import { characters } from '../helpers/scrolltext.js';
 
 /**
  * Novation Launchpad Pro MK2 - JZZ Library

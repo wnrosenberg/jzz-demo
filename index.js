@@ -1,5 +1,5 @@
-import JZZ from 'jzz';
-import LaunchPad from './class/LaunchPad';
+import JZZ from "https://cdn.skypack.dev/jzz@1.5.1";
+import LaunchPad from './class/LaunchPad.js';
 
 // Connect the refresh button an action
 // document.getElementById('refresh').addEventListener('click',function(){refreshJazz()});

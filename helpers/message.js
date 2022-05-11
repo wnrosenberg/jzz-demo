@@ -1,4 +1,4 @@
-import JZZ from 'jzz';
+import JZZ from "https://cdn.skypack.dev/jzz@1.5.1";
 
 //
 // Library for handling MIDI messages.

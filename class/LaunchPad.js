@@ -36,31 +36,51 @@ import { characters } from '../helpers/scrolltext';
  * 	   > allow text scrolling by column change, which will allow for more creative
  *       scrolling of text than the firmware allows, including color changing text
  *       and aftertouch events.
+ *
+ * ----------------------------------------
+ *
+ * @NOTES: 
+ *
+ * 	 - Grid is stored as rows 0-8 from top to bottom.
+ *   - PadIndex starts from the bottom left
+ *
  */
 
 class LaunchPad {
 
+	//
+	//
 	// Instance fields
-	input; // the input port
-	output; // the output port
-	gridState = this.getEmptyGridState();
-	palette = [[ 0,120,121,122,123,124,125,126,127,0],
-				[0,112,113,114,115,116,117,118,119,0],
-				[0,104,105,106,107,108,109,110,111,0],
-				[0, 96, 97, 98, 99,100,101,102,103,0],
-				[0, 88, 89, 90, 91, 92, 93, 94, 95,0],
-				[0, 80, 81, 82, 83, 84, 85, 86, 87,0],
-				[0, 72, 73, 74, 75, 76, 77, 78, 79,0],
-				[0, 64, 65, 66, 67, 68, 69, 70, 71,0],
-				[0, 56, 57, 58, 59, 60, 61, 62, 63,0],
-				[0, 48, 49, 50, 51, 52, 53, 54, 55,0],
-				[0, 40, 41, 42, 43, 44, 45, 46, 47,0],
-				[0, 32, 33, 34, 35, 36, 37, 38, 39,0],
-				[0, 24, 25, 26, 27, 28, 29, 30, 31,0],
-				[0, 16, 17, 18, 19, 20, 21, 22, 23,0],
-				[0,  8,  9, 10, 11, 12, 13, 14, 15,0],
-				[0,  0,  1,  2,  3,  4,  5,  6,  7,0]];
+	//
+	//
+	
+	// The main input port for the device.
+	// @TODO: Update to handle all three inputs.
+	input;
 
+	// The main output port for the device.
+	// @TODO: Update to handle all three outputs.
+	output;
+
+	// The state of the 97 pads.
+	// [NOTE] Not all methods that modify the grid update this
+	//        so this is treated more as history than a live state.
+	//        
+	gridState = this.getEmptyGridState();
+
+	// Palette activities alter the grid. This helps to preserve it.
+	// Set to null on palette close, and check for null on open/left/right.
+	gridBeforePalette = null;
+
+	// Options for the palette.
+	palette = {
+		open: false,
+		color: 1, // currently selected color
+		maxColors: 128,
+		colStart: 0, // column 0-8 to start the 8x8 display of 16x8 palette
+		colorValid: 22, // color for valid controls
+		colorInvalid: 6, // color for invalid controls
+	};
 
 	/**
 	 * LaunchPad() - instantiate a new LaunchPad object.
@@ -70,21 +90,27 @@ class LaunchPad {
 	 * @param options.layout 	Set layout mode, default: 3 (programmer)
 	 */
 	constructor(options=[]) {
+		//
 		// Set the input port.
+		//
 		if (options.input) {
 			this.input = options.input;
 		} else {
 			console.error("LP: Invalid input port.");
 		}
 
+		//
 		// Set the output port.
+		//
 		if (options.output) {
 			this.output = options.output;
 		} else {
 			console.error("LP: Invalid output port.");
 		}
 
+		//
 		// Set the layout mode.
+		//
 		if (options.layout) {
 			this.output.send(getMsg(TYPE_LAYOUT_SET, options.layout));
 		} else {
@@ -92,10 +118,29 @@ class LaunchPad {
 			this.output.send(getMsg(TYPE_LAYOUT_SET, 3));
 		}
 
-		// Set initial grid state, 1-127 = olor, 0 = off
+		//
+		// Set initial grid state.
+		//
 		if (options.gridState) {
 			this.recallGridState(options.gridState);
 		} // else use all 0s
+
+
+		//
+		// Set palette options and colors.
+		//
+
+		// Create a 16x8 palette; 0 at top left, 7 at bottom left.
+		// (See Figure 3 in the Launchpad Pro MK2 Programmer Ref)
+		let paletteGrid = [];
+		for (let i = 0; i<16; i++) {
+			let row = [];
+			for (let j = 0; j<8; j++) {
+				row.push(i*8+j);
+			}
+			paletteGrid.push(row);
+		}
+		this.palette.colors = this.getTransposedGrid(paletteGrid);;
 	}
 
 
@@ -111,12 +156,14 @@ class LaunchPad {
 	recallGridState(gridState) {
 		const newGrid = [];
 		// Check that the dimensions are correct (10x10)
-		if (gridState.length === 10 && gridState[0].length === 10) {
+		if (gridState.length === 10 && gridState[9].length === 10) {
 			gridState.forEach((row, rowIndex) => {
 				row.forEach((col, colIndex) => {
 					const index = (9 - rowIndex) * 10 + colIndex;
 					if ([0, 9, 90].indexOf(index) === -1) {
-						newGrid.push([index, col]);
+						if (col !== '' && col !== null) {
+							newGrid.push([index, col]);
+						}
 					}
 				});
 			});
@@ -154,14 +201,47 @@ class LaunchPad {
 	}
 
 	// Transpose a grid of any size (convert an array of rows into an array of columns and vice-versa).
-	getTransposedGrid(grid) {
-		const newGrid = [];
-		grid.forEach((row, r) => {
-			row.forEach((pad, c) => {
-				newGrid[c][r] = pad;
-			});
-		});
-		return newGrid;
+	getTransposedGrid(matrix) {
+		const rows = matrix.length, cols = matrix[0].length;
+		const grid = [];
+		for (let j = 0; j < cols; j++) {
+			grid[j] = Array(rows);
+		}
+		for (let i = 0; i < rows; i++) {
+			for (let j = 0; j < cols; j++) {
+				grid[j][i] = matrix[i][j];
+			}
+		}
+		return grid;
+	}
+
+
+	//
+	//
+	// Working with Pad State
+	//
+	//
+
+	// Get a pad's color by index or row and col.
+	getCurrentPadState(index, col=0) {
+		let row = 0;
+
+		if (!col) {
+			row = Math.floor(index/10);
+			col = index - (row * 10);
+		}
+
+		return this.gridState[row][col];
+	}
+
+	// Get a pad's index based on row and col.
+	getPadIndex(row, col) {
+
+	}
+
+	// Get a pad's row and col based on index.
+	getPadRowCol(index) {
+
 	}
 
 
@@ -218,6 +298,21 @@ class LaunchPad {
 	}
 	getFlash(pads) {
 		return getMsg(TYPE_PAD_FLASH, pads);
+	}
+
+	// @TODO: sendInvalidFlash to send flash using setTimeout.
+	//        Use this.getCurrentPadState with the index to get initial color.
+	//        1 Flash = Set to newcolor, delay, Set to oldcolor.
+	//        An invalid flash should be 3 times within a second.
+	// sendInvalidFlash(padIndex) or sendInvalidFlash(row, col)
+	sendInvalidFlash(index, color, delay = 133) {
+		const colors = [this.getCurrentPadState(index), color];
+		const flashState = [1,0,1,0,1,0];
+		flashState.forEach((state, i) => {
+			setTimeout( ()=>{
+				this.sendPadChange([index, colors[state]]);
+			} , delay * i );
+		});
 	}
 
 	// Send / get MIDI msg to pulse pads.
@@ -323,10 +418,10 @@ class LaunchPad {
 		const defaults = {
 			text: 'Hello World!',
 			delay: 100,
-			color: 55,
+			color: 1,
 			loop: 0,
-			preserveContent: false,
-			revealContent: false,
+			preserveContent: true,
+			revealContent: true,
 			startsAt: 0,
 		};
 
@@ -343,10 +438,10 @@ class LaunchPad {
 		const delay = getOption('delay');
 
 		// Set the color to be displayed when we output (default: 55)
-		const color = getOption('color');
+		let color = getOption('color');
 
 		// Number of times to loop after scrolling once (default: 0)
-		const loop = getOption('loop');
+		let loop = getOption('loop');
 
 		// Whether to return to the previous grid (true) or display blank (default: false)
 		const preserveContent = getOption('preserveContent');
@@ -355,7 +450,7 @@ class LaunchPad {
 		const revealContent = getOption('revealContent');
 
 		// Delay to start of animation (default: 0)
-		const startsAt = getOption('startsAt');
+		const startsAt = getOption('startsAt'); // isnt working
 
 		// The grid to show when animation is complete.
 		let gridOnComplete = []; // grid to show when complete.
@@ -457,6 +552,10 @@ class LaunchPad {
 		// For each column in the output...
 		for (let i = 0; i < msgLen; i++) {
 
+			// Increase color by 1, but not more than 126, then add one.
+			// Should allow for full range of colors 1-127 without 0.
+			color = (color + 1) % 127 + 1;
+
 			// Initialize the column array.
 			let columnPads = [];
 
@@ -547,30 +646,30 @@ class LaunchPad {
 
 		} else {
 
-			// Recall the grid in one step.
-			setTimeout(() => {
-				return this.recallGridState(gridOnComplete);
-			}, msgDuration + delay);
-
-			// Next animation can happen on msgDuration + delay * 2
-			totalDuration = msgDuration + delay * 2;
-			// console.log('message duration (after grid recall): ', totalDuration);
-
+			if (!loop) {
+				// Recall the grid in one step.
+				setTimeout(() => {
+					return this.recallGridState(gridOnComplete);
+				}, msgDuration + delay);
+				totalDuration = msgDuration + delay * 2;
+			} else {
+				totalDuration = msgDuration + delay;
+			}
 		}
 
 		// return the total duration of the animation so other methods can chain after this one.
 
-		// if (loop > 0) {
-		// 	return this.sendScrollTextChange({
-		// 		text: text,
-		// 		delay: delay,
-		// 		color: color,
-		// 		loop: loop - 1,
-		// 		preserveContent: preserveContent,
-		// 		revealContent: revealContent,
-		// 		startAt: totalDuration,
-		// 	});
-		// }
+		if (loop > 0) {
+			setTimeout(()=>{
+				return this.sendScrollTextChange({
+					text: text,
+					delay: delay,
+					loop: --loop,
+					preserveContent: preserveContent,
+					revealContent: revealContent,
+				});
+			}, totalDuration);
+		}
 		return totalDuration;
 
 	}
@@ -582,48 +681,128 @@ class LaunchPad {
 	//
 	//
 
+	isPaletteOpen() {
+		return this.palette.open;
+	}
+
+	// Get a 10x10 grid state containing the current slice of the palette.
+	// Pass in arrow state [up,down,left,right] and paletteColStart
+	getPaletteGridState(arrow, start) {
+		return [
+			[null, arrow.up, arrow.down, arrow.left, arrow.right, 0,0,0,0,null],
+			[0   , ...this.palette.colors[0].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[1].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[2].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[3].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[4].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[5].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[6].slice(start, start+8), 0],
+			[0   , ...this.palette.colors[7].slice(start, start+8), 0],
+			[null,0,0,0,0,0,0,0,0,null]
+		]; 
+	}
+
+
 	// Open the palette so that a color can be chosen.
-	sendPaletteOpen(rowStart=null, current=null) {
-		let upArrow = 22;
-		let downArrow = 22;
-		const leftArrow = 0;
-		const rightArrow = 0;
+	// Used with left and right palette navigation.
+	// Palette has 8 rows of 16, as in Figure 3 from the
+	// programming reference, so we'll use the square pads.
+	// We will use the left and right arrows to navigate.
+	// Rows of 16 means that only 8 can be displayed at one time.
+	sendPaletteOpen(colStart=null, current=null) {
 
-		// palette has 16 rows of 10, where the first and last of each row is 0.
-		// when start = 0, rows 0, 1, 2, 3, 4, 5, 6, 7 are displayed
-		// when start = 8, rows 8, 9,10,11,12,13,14,15 are displayed
+		// Check whether the palette is open yet...
+		if (!this.palette.open) {
 
-		let paletteRowStart = 0; // from 0 to 8.
-		if (rowStart !== null && rowStart >= 0 && rowStart <= 8) {
-			paletteRowStart = rowStart;
+			// And if it isn't save the grid state.
+			this.gridBeforePalette = this.getCurrentGridState();	
 		}
 
-		// when start = 0, down arrow is 0 , else 22 (green)
-		// when start = 8, up arrow is 0, else 22 (green)
+		// Get the index of the left-most visible column.
+		let paletteColStart = this.palette.colStart;
 
-		if (paletteRowStart === 0) {
-			downArrow = 0;
-		}
-		if (paletteRowStart === 8) {
-			upArrow = 0;
+		// If we are given an index to start from let's use that instead.
+		if (colStart !== null && colStart >= 0 && colStart <= 8) {
+			paletteColStart = colStart;
 		}
 
-		// palette rows [0,1,2,3,4,5,6,7,  8,9,10,11,12,13,14,15];
+		// Define the arrows for this control.
+		const arrows = {
+			up: 0,
+			down: 0,
+			left: this.palette.colorValid,
+			right: this.palette.colorValid,
+		};
+		
+		// If we're at the left side, we can't go left more.
+		if (paletteColStart === 0) {
+			arrows.left = 0;
+		}
 
-		const paletteGridState = [
-			[null, upArrow, downArrow, leftArrow, rightArrow, 0,0,0,0,null],
-			[... this.palette[ paletteRowStart + 7 ]],
-			[... this.palette[ paletteRowStart + 6 ]],
-			[... this.palette[ paletteRowStart + 5 ]],
-			[... this.palette[ paletteRowStart + 4 ]],
-			[... this.palette[ paletteRowStart + 3 ]],
-			[... this.palette[ paletteRowStart + 2 ]],
-			[... this.palette[ paletteRowStart + 1 ]],
-			[... this.palette[ paletteRowStart ]],
-			[null,0,0,0,0,0,0,0,0,null],
-		];
+		// If we're at the right side, we can't go right more.
+		if (paletteColStart === 8) {
+			arrows.right = 0;
+		}
 
-		this.recallGridState(paletteGridState);
+		// Draw this grid state.
+		this.recallGridState(this.getPaletteGridState(arrows, paletteColStart));
+
+		// Set palette to open.
+		this.palette.open = true;
+
+		// Store the current colStart.
+		this.palette.colStart = paletteColStart;
+
+		// @TODO: If the currently selected color is visible in the palette grid,
+		//        then set its pad to pulse its color to indicate selection.
+		//        Use this.palette.color unless arg current is provided.
+	}
+
+	sendPaletteLeft() {
+		const padIndex = 93;
+		if (!this.palette.open) {
+			return false;
+		}
+		if (this.palette.colStart === 0) {
+			// @TODO: Quickly flash the pad red a few times to indicate invalid action.
+			this.sendInvalidFlash(padIndex, this.palette.colorInvalid);
+			// this.sendFlash([padIndex, this.palette.colorInvalid]);
+			// setTimeout(()=>{
+			// 	this.sendFlash([padIndex, 0]);
+			// }, 1000);
+			return false;
+		}
+		return this.sendPaletteOpen(this.palette.colStart - 1);
+	}
+
+	sendPaletteRight() {
+		const padIndex = 94;
+		if (!this.palette.open) {
+			return false;
+		}
+		if (this.palette.colStart === 8) {
+			// @TODO: Quickly flash the pad red a few times to indicate invalid action.
+			this.sendInvalidFlash(padIndex, this.palette.colorInvalid);
+			// this.sendFlash([padIndex, this.palette.colorInvalid]);
+			// setTimeout(()=>{
+			// 	this.sendFlash([padIndex, 0]);
+			// }, 1000);
+			return false;
+		}
+		return this.sendPaletteOpen(this.palette.colStart + 1);
+	}
+
+	// @TODO: Handle color selection. Possibly only while palette is open.
+	// selectPaletteColor(color) {}
+
+	sendPaletteClose() {
+		if (!this.palette.open) {
+			return false;
+		}
+
+		this.recallGridState(this.gridBeforePalette);
+		this.palette.open = false;
+		this.gridBeforePalette = null;
 	}
 
 	/*   #############################################################################################################

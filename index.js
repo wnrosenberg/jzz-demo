@@ -22,7 +22,7 @@ const initApp = function() {
 	_LP = new LaunchPad({
 		input: JZZ().openMidiIn(default_port),
 		output: JZZ().openMidiOut(default_port),
-		gridState: [[0, 0, 0, 0, 0, 0, 0, 0, 0,''],
+		gridState: [['', 0, 0, 0, 0, 0, 0, 0, 0,''],
 								[0,36, 0, 0,36, 0, 0,36, 0,0],
 								[0,36, 1, 0,36, 1, 0, 0, 1,0],
 								[0,36, 1, 0,36, 1, 0, 0, 0,0],
@@ -31,7 +31,7 @@ const initApp = function() {
 								[0,36, 1, 0,36, 1, 0,36, 1,0],
 								[0,36, 1, 0,36, 1, 0,36, 1,0],
 								[0, 0, 1, 0, 0, 1, 0, 0, 1,0],
-								[0, 0, 0, 0, 0, 0, 0, 0, 0,0]],
+								['', 0, 0, 0, 0, 0, 0, 0, 0,'']],
 	});
 
 
@@ -93,17 +93,17 @@ const initApp = function() {
 //////////////////////////////
 
 // Connect logging to JZZ inputs.
-const logInputs = () => {
-	let input;
-	const inputLogger = (msg, i) => {
-		let index = i !== undefined ? `[${i}]` : '';
-		console.log(`msg${index}: ${msg.toString()}`);
-	}
-	for (let i = 0; i < JZZ().info().inputs.length; i++) {
-		input = JZZ().openMidiIn(i);
-		input.connect(inputLogger);
-	}
-};
+// const logInputs = () => {
+// 	let input;
+// 	const inputLogger = (msg, i) => {
+// 		let index = i !== undefined ? `[${i}]` : '';
+// 		console.log(`msg${index}: ${msg.toString()}`);
+// 	}
+// 	for (let i = 0; i < JZZ().info().inputs.length; i++) {
+// 		input = JZZ().openMidiIn(i);
+// 		input.connect(inputLogger);
+// 	}
+// };
 
 //////////////////////////////
 
@@ -111,7 +111,7 @@ const logInputs = () => {
 const initJazz = function() {
 	JZZ({sysex: true}).or('Cannot start MIDI engine!').and(function(){
 		console.log('JZZ initialized', JZZ().info());
-		logInputs(); // console.log all input port messages
+		// logInputs(); // now handled in Launchpad class.
 		initApp();
 	})
 };

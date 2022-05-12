@@ -25,7 +25,7 @@ import { characters } from '../helpers/scrolltext';
  *
  * ----------------------------------------
  *
- * @TODO:
+ * @TODO: (In Progress)
  *
  * 	 - Read Input Channels and respond to 
  * 
@@ -53,6 +53,10 @@ class LaunchPad {
 	// Instance fields
 	//
 	//
+
+	// The default port number for input and output.
+	// @TODO allow for null input and output in construtor, to use JZZ().openMidiIn() or openMidiOut()
+	defaultPort = 1;
 	
 	// The main input port for the device.
 	// @TODO: Update to handle all three inputs.
@@ -82,6 +86,9 @@ class LaunchPad {
 		colorInvalid: 6, // color for invalid controls
 	};
 
+	// Time of last command, used to determine if command was held down vs pressed.
+	paletteOpenAt = 0;
+
 	/**
 	 * LaunchPad() - instantiate a new LaunchPad object.
 	 * @param options 			Array of options
@@ -90,16 +97,29 @@ class LaunchPad {
 	 * @param options.layout 	Set layout mode, default: 3 (programmer)
 	 */
 	constructor(options=[]) {
-		// const defaults = {};
-		// const getOption = (key) => {
-		// 	return options ? ( options[key] ? options[key] : defaults[key]) : defaults[key];
-		// }
+		const defaults = {
+			layout: 3,
+		};
+		const getOption = (key) => {
+			return options ? ( options[key] ? options[key] : defaults[key]) : defaults[key];
+		}
 
 		//
 		// Set the input port.
 		//
 		if (options.input) {
 			this.input = options.input;
+
+			// Set up internal listeners.
+
+			// Log messages to the console.
+			const inputListener = (msg) => {
+				let data = this.parseMidiInput(msg);
+				console.log(`Last received MIDI message: ${msg.toString()}`, data);
+				this.handleMidiInput(data);
+			}
+			this.input.connect(inputListener);
+
 		} else {
 			console.error("LP: Invalid input port.");
 		}
@@ -116,12 +136,9 @@ class LaunchPad {
 		//
 		// Set the layout mode.
 		//
-		if (options.layout) {
-			this.output.send(getMsg(TYPE_LAYOUT_SET, options.layout));
-		} else {
-			// default to programmer layout.
-			this.output.send(getMsg(TYPE_LAYOUT_SET, 3));
-		}
+		let layout = getOption('layout');
+		console.log(`Asking device to set layout to ${layout}.`);
+		this.output.send(getMsg(TYPE_LAYOUT_SET, layout));
 
 		//
 		// Set initial grid state.
@@ -400,6 +417,199 @@ class LaunchPad {
 	// Get a basic NOTE OFF message.
 	getNoteOff(channel, note) {
 		return JZZ.MIDI.noteOff(channel, note);
+	}
+
+
+	//
+	//
+	// Working with MIDI messages from Device
+	//
+	//
+
+	// Handle types of Midi messages from the device.
+	handleMidiInput(data) {
+		if (data instanceof JZZ().MIDI) {
+			data = this.parseMidiInput(data);
+		}
+
+		const holdThreshold = 700;
+		const allCommands = [
+			/**/ 91, 92, 93, 94, 95, 96, 97, 98, /**/
+			 80, /** *** *** *** *** *** *** **/ 89,
+			 70, /** *** *** *** *** *** *** **/ 79,
+			 60, /** *** *** *** *** *** *** **/ 69,
+			 50, /** *** *** *** *** *** *** **/ 59,
+			 40, /** *** *** *** *** *** *** **/ 49,
+			 30, /** *** *** *** *** *** *** **/ 39,
+			 20, /** *** *** *** *** *** *** **/ 29,
+			 10, /** *** *** *** *** *** *** **/ 19,
+			/**/  1,  2,  3,  4,  5,  6,  7,  8, /**/
+		];
+		const supportedCommands = [
+			10, // open palette
+		];
+		const unsupportedCommands = allCommands.filter((cmd) => supportedCommands.indexOf(cmd) === -1);
+		const paletteCommands = [
+			10, // close palette
+			93, // move palette left
+			94, // move palette right
+		];
+		const unsupportedPaletteCommands = allCommands.filter((cmd) => paletteCommands.indexOf(cmd) === -1);
+	
+		// data validation
+		// if ((typeof data === "object" || typeof data === 'function') && (data !== null)) {
+		// 	type = data.type;
+		// }
+
+		switch(data.type) {
+			case 'layout_select':
+				console.log(`Device requested layout change to ${data.data}.`);
+				break;
+			case 'layout_status':
+				console.log(`Device confirmed layout is now set to ${data.data}.`);
+				break;
+			case 'scroll_end':
+				console.log('Device confirmed end of scroll text reached.');
+				break;
+			case 'command_on':
+				// Determine which command by checking data.note
+				if (this.isPaletteOpen() && unsupportedPaletteCommands.indexOf(data.note) > -1) {
+					this.sendInvalidFlash(data.note, this.palette.colorInvalid);
+				}
+				if (data.note === 10) {
+					this.paletteOpenAt = Date.now();
+					if (this.isPaletteOpen()) {
+						console.log('User requested palette close.');
+						this.sendPaletteClose();
+						this.sendPadChange([10, 0]);
+					} else {
+						console.log('User requested palette open.');
+						this.sendPaletteOpen();
+						// this.sendPadChange([10, this.palette.colorValid]);
+						// After holdThreshold ms, start to pulse bewteen colorValid and 0.
+						// setTimeout(()=>{
+							this.sendPadChange([10, 0]);
+							this.sendFlash([10, this.palette.colorValid]);
+						// }, holdThreshold);
+					}
+				} else if (data.note === 93) {
+					if (this.isPaletteOpen()) {
+						console.log('User requested palette move left.');
+						this.sendPaletteLeft();
+					}
+				} else if (data.note === 94) {
+					if (this.isPaletteOpen()) {
+						console.log('User requested palette move right.');
+						this.sendPaletteRight();
+					}
+				} else {
+					console.log(`User requested unrecognized command_on.`);
+				}
+				break;
+			case 'command_off':
+				// Determine which command by checking data.note
+				if (data.note === 10) {
+					if (this.isPaletteOpen()) {
+						console.log('User requested palette close via command_off.');
+
+						// Check the time since the corresponding command_on was triggered.
+						let diff = Date.now() - this.paletteOpenAt;
+						console.log(`Diff was ${diff}`);
+
+						if (diff > holdThreshold) {
+							console.log(`Off followed more than a second later, so assume it was held, so we will close the palette.`);
+							this.sendPaletteClose();
+							this.sendPadChange([10, 0]);
+						} else {
+							console.log(`Off followed less than a second later, so assume it was a press, so we will leave it open.`);
+						}
+					}
+				} else {
+					console.log(`User requested unrecognized command_off.`);
+				}
+				break;
+			default:
+				console.log(`Message of unsupported type: ${data.type}.`)
+				break;
+		}
+	}
+
+	// Parse a message of type JZZ.MIDI
+	parseMidiInput(message) {
+		// console.log('parseMidiInput is attempting to parse the message: ', message);
+		const data = {
+			type: 'unrecognized', // [layout_select, layout_status, @TODO others]
+			sysex: false,
+			note: null,
+			data: [], // data bytes, for sysex messages
+			bytes: [], // list 2-digit hex characters
+			decimals: [], // bytes but after parseInt(x,'16')
+		};
+
+		let bytes = message.toString().toUpperCase().split(' ');
+		data.bytes = bytes;
+		// console.log('hex bytes:', bytes);
+
+		let decimals = bytes.map((byte) => parseInt(byte, '16'));
+		data.decimals = decimals;
+		// console.log('dec bytes:', decimals);
+
+
+		// Validation start.
+		if (message.isNoteOn()) {
+			data.type = 'note_on';
+			data.note = message.getNote();
+			data.velocity = decimals[2];
+		} else if (message.isNoteOff()) {
+			data.type = 'note_off';
+			data.note = message.getNote();
+			data.velocity = decimals[2];
+		} else if (decimals[0] === 176) {
+			data.type = 'command';
+			data.note = decimals[1];
+			if (decimals[2] === 0) {
+				data.type = 'command_off';
+			}
+			if (decimals[2] === 127) {
+				data.type = 'command_on';
+			}
+		} else if (message.isFullSysEx()) {
+			data.sysex = true;
+			data.type = 'sysex_full';
+
+			// All sysex start with (240,0,32,41,2,16) and end with (247) according to reference.
+			if (decimals[0] === 240
+				&& decimals[1] === 0
+				&& decimals[2] === 32
+				&& decimals[3] === 41
+				&& decimals[4] === 2
+				&& decimals[5] === 16
+				&& decimals[decimals.length - 1] === 247) {
+				
+				// This is a full sysex message specifically from our device.
+				switch(decimals[6]) {
+					case 44: // hex: 2C
+						data.type = 'layout_select';
+						data.data = decimals[7];
+						break;
+					case 47: // hex 2F
+						data.type = 'layout_status';
+						data.data = decimals[7];
+						break;
+					case 21: // hex: 15
+						data.type = 'scroll_end';
+						break;
+					default:
+						data.type = 'sysex_device';
+						break;
+				}
+			}
+		} else if (message.isSysEx()) {
+			data.sysex = true;
+			data.type = 'sysex';
+		}
+		
+		return data;
 	}
 
 

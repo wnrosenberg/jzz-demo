@@ -90,6 +90,11 @@ class LaunchPad {
 	 * @param options.layout 	Set layout mode, default: 3 (programmer)
 	 */
 	constructor(options=[]) {
+		// const defaults = {};
+		// const getOption = (key) => {
+		// 	return options ? ( options[key] ? options[key] : defaults[key]) : defaults[key];
+		// }
+
 		//
 		// Set the input port.
 		//
@@ -140,7 +145,7 @@ class LaunchPad {
 			}
 			paletteGrid.push(row);
 		}
-		this.palette.colors = this.getTransposedGrid(paletteGrid);;
+		this.palette.colors = this.getTransposedGrid(paletteGrid);
 	}
 
 
@@ -156,7 +161,7 @@ class LaunchPad {
 	recallGridState(gridState) {
 		const newGrid = [];
 		// Check that the dimensions are correct (10x10)
-		if (gridState.length === 10 && gridState[9].length === 10) {
+		if (gridState.length === 10 && gridState[0].length === 10) {
 			gridState.forEach((row, rowIndex) => {
 				row.forEach((col, colIndex) => {
 					const index = (9 - rowIndex) * 10 + colIndex;
@@ -185,10 +190,7 @@ class LaunchPad {
 
 	// Get an empty 10 x 10 grid.
 	getEmptyGridState() {
-		return [
-			[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],
-			[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]
-		];
+		return [['',0,0,0,0,0,0,0,0,''],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],['',0,0,0,0,0,0,0,0,'']];
 	}
 
 	// Get the nth column from a grid as an array.
@@ -235,6 +237,14 @@ class LaunchPad {
 	}
 
 	// Get a pad's index based on row and col.
+	/**
+	 * See recallGridState method for this code: 
+	 * gridState.forEach((row, rowIndex) => {
+				row.forEach((col, colIndex) => {
+					const index = (9 - rowIndex) * 10 + colIndex;
+		and reverse engineer it lol
+	*
+	*/
 	getPadIndex(row, col) {
 
 	}
@@ -253,6 +263,7 @@ class LaunchPad {
 	//
 
 	// Send / get a MIDI msg to change pad color.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param pads 		Array(97) of Array(2)[index, color] (incl side led)
 	sendPadChange(pads) {
 		return this.output.send(this.getPadChange(pads));
@@ -262,26 +273,41 @@ class LaunchPad {
 	}
 
 	// Send / get a MIDI msg to change column color.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param col 		Array(11) with a column index [0-9] and up to 10 colors.
 	//					Note: cols 0 and 9 need placeholders for corners
 	sendColChange(col) {
 		return this.output.send(this.getColChange(col));
 	}
 	getColChange(col) {
+		col = col.map((item) => {
+			if (item === '' || item === null) {
+				item = 0;
+			}
+			return item;
+		});
 		return getMsg(TYPE_COL_COLOR, col);
 	}
 
 	// Send / get a MIDI msg to change row color.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param row 		Array(11) with a row index [0-9] and up to 10 colors.
 	//					Note: rows 0 and 9 need placeholders for corners
 	sendRowChange(row) {
 		return this.output.send(this.getRowChange(row));
 	}
 	getRowChange(row) {
+		row = row.map((item) => {
+			if (item === '' || item === null) {
+				item = 0;
+			}
+			return item;
+		});
 		return getMsg(TYPE_ROW_COLOR, row);
 	}
 
 	// Send / get msg to change the entire grid to a color.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param color 	Array(1) with a single color.
 	sendAllChange(color) {
 		return this.output.send(this.getAllChange(color));
@@ -291,6 +317,7 @@ class LaunchPad {
 	}
 
 	// Send / get MIDI msg to flash pads.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param pads 		Array(97) of Array(2)[index, color] (incl side led)
 	// 					Note: send Note On or SysEx msg to stop flashing
 	sendFlash(pads) {
@@ -300,7 +327,7 @@ class LaunchPad {
 		return getMsg(TYPE_PAD_FLASH, pads);
 	}
 
-	// @TODO: sendInvalidFlash to send flash using setTimeout.
+	// @TODO: sendInvalidFlash to send flash using built-in method with flash speed and duration controlled by MIDI clock.
 	//        Use this.getCurrentPadState with the index to get initial color.
 	//        1 Flash = Set to newcolor, delay, Set to oldcolor.
 	//        An invalid flash should be 3 times within a second.
@@ -316,6 +343,7 @@ class LaunchPad {
 	}
 
 	// Send / get MIDI msg to pulse pads.
+	// @TODO: do param validation (ensure isArray() and proper number of items)
 	// @param pads 		Array(97) of Array(2)[index, color] (incl side led)
 	// 					Note: send Note On or SysEx msg to stop pulsing.
 	sendPulse(pads) {
@@ -552,9 +580,27 @@ class LaunchPad {
 		// For each column in the output...
 		for (let i = 0; i < msgLen; i++) {
 
-			// Increase color by 1, but not more than 126, then add one.
-			// Should allow for full range of colors 1-127 without 0.
-			color = (color + 1) % 127 + 1;
+			const useRainbowText = true;
+			const rainbowPattern = 'all_columns';
+			const rainbowPalette = 'default';
+			const supportedRainbowPatterns = ['all_columns'];
+
+			if (useRainbowText) {
+				if (rainbowPalette === 'default') {
+					// use the default 1-127 color palette
+				} else {
+					// @TODO: Check if the name matches an existing custom color palette and then use that.
+				}
+
+				if (rainbowPattern === 'all_columns') {
+					// Increase color by 1, but not more than 126, then add one.
+					// Should allow for full range of colors 1-127 without 0.
+					color = (color + 1) % 127 + 1;
+				} else if (rainbowPattern === 'no_empty_columns') {
+					// @TODO: Check if this column contains any [1]s before incrementing the color.
+				}
+			}
+			
 
 			// Initialize the column array.
 			let columnPads = [];
@@ -636,7 +682,12 @@ class LaunchPad {
 			// Start displaying each column starting from the left, at t = msgDuration + delay.
 			for (let l = 0; l < deviceSize; l++) {
 				setTimeout(() => {
-					return this.sendColChange([9 - l, ...colsOnComplete[9 - l] ]);
+					// Get the column data.
+					let columnPads = [...colsOnComplete[9 - l]];
+					// Remember that rows are ordered from bottom to top.
+					columnPads.reverse();
+					// Output in the correct order.
+					return this.sendColChange([9 - l, ...columnPads ]);
 				}, msgDuration + delay * (l + 1));	
 			}
 

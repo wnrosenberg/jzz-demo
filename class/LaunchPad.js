@@ -790,6 +790,17 @@ class LaunchPad {
 		// For each column in the output...
 		for (let i = 0; i < msgLen; i++) {
 
+			// Calculate whether there are any filled in pads in this column,
+			// and if not, don't increment the color.
+
+			let colTotal = 0;
+
+			for (let j = 0; j < 8; j++) {
+				if (output[j][i] === 1) {
+					colTotal++;
+				}
+			}
+
 			const useRainbowText = true;
 			const rainbowPattern = 'all_columns';
 			const rainbowPalette = 'default';
@@ -805,7 +816,9 @@ class LaunchPad {
 				if (rainbowPattern === 'all_columns') {
 					// Increase color by 1, but not more than 126, then add one.
 					// Should allow for full range of colors 1-127 without 0.
-					color = (color + 1) % 127 + 1;
+					if (colTotal > 0) {
+						color = (color + 1) % 126 + 2;
+					}
 				} else if (rainbowPattern === 'no_empty_columns') {
 					// @TODO: Check if this column contains any [1]s before incrementing the color.
 				}

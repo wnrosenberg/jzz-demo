@@ -31,7 +31,7 @@ const initApp = function() {
 								[0,36, 1, 0,36, 1, 0,36, 1,0],
 								[0,36, 1, 0,36, 1, 0,36, 1,0],
 								[0, 0, 1, 0, 0, 1, 0, 0, 1,0],
-								['', 0, 0, 0, 0, 0, 0, 0, 0,'']],
+								['', 0, 0, 0, 0, 0, 0, 0, 0,'']],								
 	});
 
 
@@ -45,29 +45,31 @@ const initApp = function() {
 	// Scroll a message
 	// _LP.sendScrollText([45,100,[0x04, 'In the mix with DJ PupStar!  ',0x06,' MONDAY NIGHT DISCO! ']]);
 
-	// Attach scroll text event to the button.
-	const scrollStartButton = document.querySelector('button#scrollstart');
-	if (scrollStartButton) scrollStartButton.addEventListener('click', (e) => {
-		return _LP.sendScrollTextChange({text:'Hello World!', delay: 200});	
-	});
+	_LP.sendScrollTextChange({text:'Monday Night Disco  #  In the mix with DJ PupStar  #  twitch.tv/jaypuppy42', loop: 1000, delay: 90});	
 
-	// Attack palette toggle buttn to controls.
-	const paletteToggleButton = document.querySelector('button#togglePaletteOpen');
-	if (paletteToggleButton) paletteToggleButton.addEventListener('click', (e) => {
-		if (!_LP.isPaletteOpen()) {
-			return _LP.sendPaletteOpen();
-		} else {
-			return _LP.sendPaletteClose();
-		}
-	});
-	const paletteLeftButton = document.querySelector('button#togglePaletteLeft');
-	if (paletteLeftButton) paletteLeftButton.addEventListener('click', (e) => {
-		return _LP.sendPaletteLeft();
-	});
-	const paletteRightButton = document.querySelector('button#togglePaletteRight');
-	if (paletteRightButton) paletteRightButton.addEventListener('click', (e) => {
-		return _LP.sendPaletteRight();
-	});
+	// // Attach scroll text event to the button.
+	// const scrollStartButton = document.querySelector('button#scrollstart');
+	// if (scrollStartButton) scrollStartButton.addEventListener('click', (e) => {
+	// 	return _LP.sendScrollTextChange({text:'Hello World!', delay: 200});	
+	// });
+
+	// // Attack palette toggle buttn to controls.
+	// const paletteToggleButton = document.querySelector('button#togglePaletteOpen');
+	// if (paletteToggleButton) paletteToggleButton.addEventListener('click', (e) => {
+	// 	if (!_LP.isPaletteOpen()) {
+	// 		return _LP.sendPaletteOpen();
+	// 	} else {
+	// 		return _LP.sendPaletteClose();
+	// 	}
+	// });
+	// const paletteLeftButton = document.querySelector('button#togglePaletteLeft');
+	// if (paletteLeftButton) paletteLeftButton.addEventListener('click', (e) => {
+	// 	return _LP.sendPaletteLeft();
+	// });
+	// const paletteRightButton = document.querySelector('button#togglePaletteRight');
+	// if (paletteRightButton) paletteRightButton.addEventListener('click', (e) => {
+	// 	return _LP.sendPaletteRight();
+	// });
 
 	// Cycle a pad between colors, by default will noteOff at end unless 5th param = false
 	// _LP.sendColorCycle(0, 83, [100, 6, 12, 17, 24]);
